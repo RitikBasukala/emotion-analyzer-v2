@@ -1,0 +1,43 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: emotion_ai_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-emotion_ai}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change_me_in_production}
+      POSTGRES_DB: ${POSTGRES_DB:-emotion_recognition}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-emotion_ai} -d ${POSTGRES_DB:-emotion_recognition}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - emotion_ai_network
+
+  # Optional lightweight local DB browser. Not required to run the API;
+  # comment out this service if you don't need it.
+  adminer:
+    image: adminer:latest
+    container_name: emotion_ai_adminer
+    restart: unless-stopped
+    ports:
+      - "${ADMINER_PORT:-8080}:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - emotion_ai_network
+
+volumes:
+  postgres_data:
+    driver: local
+
+networks:
+  emotion_ai_network:
+    driver: bridge

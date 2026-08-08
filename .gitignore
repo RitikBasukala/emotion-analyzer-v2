@@ -1,0 +1,70 @@
+## OS files
+.DS_Store
+Thumbs.db
+
+## Editor / IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+## Python / FastAPI backend
+__pycache__/
+*.py[cod]
+*.pyd
+*.pyo
+*.so
+.Python
+build/
+dist/
+site/
+htmlcov/
+.coverage
+.coverage.*
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.hypothesis/
+.tox/
+.nox/
+.venv/
+venv/
+env/
+ENV/
+pip-wheel-metadata/
+*.egg-info/
+.eggs/
+.ipynb_checkpoints/
+
+## Environment variables and secrets
+.env
+.env.*
+!.env.example
+
+## Logs
+*.log
+logs/
+
+## Node / React frontend
+node_modules/
+dist/
+build/
+coverage/
+.turbo/
+.vite/
+*.tsbuildinfo
+
+## Vite / frontend env files
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+## Misc
+tmp/
+temp/
+
+
+#Models
+server/app/ml/text_emotion/text_model/model.safetensors
