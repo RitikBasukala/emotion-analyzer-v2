@@ -1,6 +1,6 @@
 import { motion } from 'framer-motion';
 import { Card } from '../../components/ui';
-import { EMOTION_COLORS, EMOTION_ICONS, EmotionType, TextAnalysisResult } from '../../types';
+import { resolveEmotionTheme, TextAnalysisResult } from '../../types';
 
 interface TextResultsPanelProps {
   result: TextAnalysisResult;
@@ -8,11 +8,12 @@ interface TextResultsPanelProps {
 
 export function TextResultsPanel({ result }: TextResultsPanelProps) {
   const { emotion, confidence, probabilities } = result.prediction;
+  const currentEmotion = resolveEmotionTheme(emotion);
   const nextEmotions = Object.entries(probabilities)
     .map(([name, value]) => ({
       name,
       value: value * 100,
-      color: EMOTION_COLORS[name as EmotionType] || '#a1a1aa',
+      theme: resolveEmotionTheme(name),
     }))
     .sort((left, right) => right.value - left.value)
     .slice(1, 4);
@@ -24,9 +25,9 @@ export function TextResultsPanel({ result }: TextResultsPanelProps) {
           <div className="flex items-center gap-4 mb-6">
             <div
               className="w-16 h-16 rounded-2xl flex items-center justify-center text-3xl"
-              style={{ backgroundColor: `${EMOTION_COLORS[emotion as EmotionType]}20` }}
+              style={{ backgroundColor: `${currentEmotion.color}20` }}
             >
-              {EMOTION_ICONS[emotion as EmotionType]}
+              {currentEmotion.icon}
             </div>
             <div>
               <p className="text-sm text-neutral-400">Detected Emotion</p>
@@ -42,7 +43,7 @@ export function TextResultsPanel({ result }: TextResultsPanelProps) {
                 animate={{ width: `${confidence * 100}%` }}
                 transition={{ duration: 0.8, ease: 'easeOut' }}
                 className="h-full rounded-full"
-                style={{ backgroundColor: EMOTION_COLORS[emotion as EmotionType] }}
+                style={{ backgroundColor: currentEmotion.color }}
               />
             </div>
           </div>
@@ -59,7 +60,7 @@ export function TextResultsPanel({ result }: TextResultsPanelProps) {
                     transition={{ duration: 0.25, delay: index * 0.03 }}
                     className="flex items-center gap-3 rounded-xl border border-neutral-800/80 bg-neutral-900/50 px-3 py-2"
                   >
-                    <span className="text-lg">{EMOTION_ICONS[item.name as EmotionType]}</span>
+                    <span className="text-lg">{item.theme.icon}</span>
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center justify-between gap-3">
                         <p className="truncate text-sm font-medium text-neutral-200">{item.name}</p>
@@ -71,7 +72,7 @@ export function TextResultsPanel({ result }: TextResultsPanelProps) {
                           animate={{ width: `${item.value}%` }}
                           transition={{ duration: 0.7, ease: 'easeOut' }}
                           className="h-full rounded-full opacity-70"
-                          style={{ backgroundColor: item.color }}
+                          style={{ backgroundColor: item.theme.color }}
                         />
                       </div>
                     </div>

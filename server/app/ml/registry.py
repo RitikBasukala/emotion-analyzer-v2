@@ -27,6 +27,15 @@ class ModelRegistry:
                 model_path=str(settings.text_model_path),
                 device=settings.device,
                 max_length=settings.text_model_max_length,
+                output_mode="fine27",
+            )
+        )
+        self.fusion_text = TextEmotionModel(
+            TextEmotionConfig(
+                model_path=str(settings.text_model_path),
+                device=settings.device,
+                max_length=settings.text_model_max_length,
+                output_mode="coarse7",
             )
         )
         self.audio = AudioEmotionModel(

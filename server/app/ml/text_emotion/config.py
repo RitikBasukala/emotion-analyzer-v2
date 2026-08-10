@@ -6,7 +6,7 @@ environment truth) rather than reading `os.environ` itself.
 """
 
 from dataclasses import dataclass, field
-from typing import Dict, Optional
+from typing import Dict, Literal, Optional
 
 
 @dataclass(frozen=True)
@@ -17,11 +17,12 @@ class TextEmotionConfig:
     device: str = "cpu"
     max_length: int = 512
     enabled: bool = True
+    output_mode: Literal["fine27", "coarse7"] = "fine27"
 
     # The local checkpoint is a BERT model fine-tuned on GoEmotions (28
-    # fine-grained labels, multi-label/sigmoid activation). We map those
-    # 28 fine-grained labels down to the 7 coarse emotion classes shared
-    # across every modality and the fusion engine.
+    # labels, softmax activation). `fine27` returns the 27 non-neutral
+    # emotions for direct text analysis. `coarse7` aggregates the same
+    # checkpoint down to the 7 shared emotion classes used by fusion.
     goemotions_to_coarse: Dict[str, str] = field(
         default_factory=lambda: {
             "admiration": "Happy",

@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { motion } from 'framer-motion';
-import { EMOTION_COLORS, EMOTION_ICONS, EmotionType } from '../../types';
+import { resolveEmotionTheme } from '../../types';
 
 interface EmotionRankingListProps {
   probabilities: Record<string, number>;
@@ -12,7 +12,7 @@ interface EmotionRankingListProps {
 interface RankedEmotion {
   name: string;
   value: number;
-  color: string;
+  theme: ReturnType<typeof resolveEmotionTheme>;
 }
 
 export function EmotionRankingList({
@@ -24,7 +24,7 @@ export function EmotionRankingList({
       .map(([emotion, value]) => ({
         name: emotion,
         value: value * 100,
-        color: EMOTION_COLORS[emotion as EmotionType] || '#a1a1aa',
+        theme: resolveEmotionTheme(emotion),
       }))
       .sort((a, b) => b.value - a.value)
   ), [probabilities]);
@@ -49,7 +49,7 @@ export function EmotionRankingList({
                 Primary Emotion
               </p>
               <p className="mt-2 truncate text-base font-semibold text-white">
-                {EMOTION_ICONS[primary.name as EmotionType]} {primary.name}
+                {primary.theme.icon} {primary.name}
               </p>
             </div>
             <div className="rounded-full bg-white/5 px-3 py-1 text-sm font-medium text-white">
@@ -62,7 +62,7 @@ export function EmotionRankingList({
               animate={{ width: `${primary.value}%` }}
               transition={{ duration: 0.8, ease: 'easeOut' }}
               className="h-full rounded-full"
-              style={{ backgroundColor: primary.color }}
+              style={{ backgroundColor: primary.theme.color }}
             />
           </div>
         </motion.div>
@@ -80,7 +80,7 @@ export function EmotionRankingList({
                 transition={{ duration: 0.25, delay: index * 0.03 }}
                 className="flex items-center gap-3 rounded-xl border border-neutral-800/80 bg-neutral-900/50 px-3 py-2"
               >
-                <span className="text-lg">{EMOTION_ICONS[item.name as EmotionType]}</span>
+                <span className="text-lg">{item.theme.icon}</span>
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center justify-between gap-3">
                     <p className="truncate text-sm font-medium text-neutral-200">{item.name}</p>
@@ -92,7 +92,7 @@ export function EmotionRankingList({
                       animate={{ width: `${item.value}%` }}
                       transition={{ duration: 0.7, ease: 'easeOut' }}
                       className="h-full rounded-full opacity-70"
-                      style={{ backgroundColor: item.color }}
+                      style={{ backgroundColor: item.theme.color }}
                     />
                   </div>
                 </div>

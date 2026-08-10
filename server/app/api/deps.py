@@ -40,10 +40,15 @@ def get_text_service() -> TextEmotionService:
 
 
 @lru_cache
+def get_fusion_text_service() -> TextEmotionService:
+    return TextEmotionService(get_registry().fusion_text, get_repository())
+
+
+@lru_cache
 def get_audio_service() -> AudioEmotionService:
     return AudioEmotionService(
         get_registry().audio,
-        get_text_service(),
+        get_fusion_text_service(),
         get_fusion_service(),
         get_repository(),
         settings,

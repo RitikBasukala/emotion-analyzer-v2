@@ -139,3 +139,52 @@ export const EMOTION_ICONS: Record<EmotionType, string> = {
   Disgust: '🤢',
   Neutral: '😐',
 };
+
+export const TEXT_FINE_TO_COARSE_EMOTION: Record<string, EmotionType> = {
+  admiration: 'Happy',
+  amusement: 'Happy',
+  joy: 'Happy',
+  excitement: 'Happy',
+  love: 'Happy',
+  optimism: 'Happy',
+  pride: 'Happy',
+  relief: 'Happy',
+  gratitude: 'Happy',
+  approval: 'Happy',
+  caring: 'Happy',
+  desire: 'Happy',
+  sadness: 'Sad',
+  grief: 'Sad',
+  disappointment: 'Sad',
+  remorse: 'Sad',
+  embarrassment: 'Sad',
+  anger: 'Angry',
+  annoyance: 'Angry',
+  disapproval: 'Angry',
+  fear: 'Fear',
+  nervousness: 'Fear',
+  surprise: 'Surprise',
+  realization: 'Surprise',
+  curiosity: 'Surprise',
+  confusion: 'Surprise',
+  disgust: 'Disgust',
+  neutral: 'Neutral',
+};
+
+export function resolveEmotionTheme(emotion: string): {
+  normalized: EmotionType;
+  color: string;
+  icon: string;
+} {
+  const normalized = (
+    EMOTION_COLORS[emotion as EmotionType]
+      ? emotion
+      : TEXT_FINE_TO_COARSE_EMOTION[emotion.toLowerCase()] || 'Neutral'
+  ) as EmotionType;
+
+  return {
+    normalized,
+    color: EMOTION_COLORS[normalized],
+    icon: EMOTION_ICONS[normalized],
+  };
+}

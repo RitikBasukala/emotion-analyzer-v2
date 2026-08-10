@@ -6,9 +6,11 @@ Transformers' safetensors-native loading path (`from_pretrained` picks up
 `.safetensors` automatically when present, avoiding pickle-based
 deserialization entirely).
 
-The checkpoint predicts 28 fine-grained GoEmotions labels using a softmax
-(single-label) head. We aggregate those into the 7 coarse emotion classes
-shared by every modality and the fusion engine.
+The checkpoint predicts 28 GoEmotions labels with a softmax head. The
+service supports two output modes:
+- `fine27`: return the 27 non-neutral emotions for direct text analysis.
+- `coarse7`: aggregate the same checkpoint into the 7 shared coarse
+    emotion classes used by fusion.
 """
 
 import logging
@@ -39,6 +41,10 @@ class TextEmotionModel(BaseModelService):
         )
         self.text_config = config
         self.tokenizer = None
+
+    @property
+    def output_mode(self) -> str:
+        return self.text_config.output_mode
 
     def load_model(self) -> None:
         """Load tokenizer + safetensors weights from the local checkpoint directory."""
@@ -98,25 +104,44 @@ class TextEmotionModel(BaseModelService):
 
         inference_time_ms = (time.time() - start_time) * 1000
 
-        coarse_probs = self._aggregate_to_coarse(fine_probs)
-        predicted_emotion = max(coarse_probs, key=lambda label: coarse_probs[label])
+        if self.output_mode == "fine27":
+            probabilities = self._fine27_distribution(fine_probs)
+        elif self.output_mode == "coarse7":
+            probabilities = self._aggregate_to_coarse(fine_probs)
+        else:  # pragma: no cover - defensive
+            raise ValueError(f"Unsupported text output mode: {self.output_mode}")
+
+        predicted_emotion = max(probabilities, key=lambda label: probabilities[label])
 
         return EmotionPrediction(
             emotion=predicted_emotion,
-            confidence=float(coarse_probs[predicted_emotion]),
-            probabilities=coarse_probs,
-            model_name=self.config.model_name,
+            confidence=float(probabilities[predicted_emotion]),
+            probabilities=probabilities,
+            model_name=f"{self.config.model_name}:{self.output_mode}",
             inference_time_ms=inference_time_ms,
         )
 
-    def _aggregate_to_coarse(self, fine_probs: np.ndarray) -> Dict[str, float]:
-        """Map 28 GoEmotions sigmoid outputs onto the 7 shared coarse labels.
+    def _fine27_distribution(self, fine_probs: np.ndarray) -> Dict[str, float]:
+        """Return the 27 non-neutral GoEmotions labels as a normalized distribution."""
+        id2label = self.model.config.id2label
+        probabilities: Dict[str, float] = {}
 
-        Each coarse bucket takes the *max* activation among its constituent
-        fine-grained labels (a bucket is "active" if any of its underlying
-        emotions fired). The resulting coarse scores are derived from the
-        model's softmax probabilities, so the text UI can show the strength of
-        each emotion directly.
+        for idx, fine_label in id2label.items():
+            if fine_label.lower() == "neutral":
+                continue
+            probabilities[fine_label] = float(fine_probs[int(idx)])
+
+        total = sum(probabilities.values())
+        if total <= 0:
+            return {label: 0.0 for label in probabilities}
+        return {label: value / total for label, value in probabilities.items()}
+
+    def _aggregate_to_coarse(self, fine_probs: np.ndarray) -> Dict[str, float]:
+        """Map 28 GoEmotions outputs onto the 7 shared coarse labels.
+
+        Each coarse bucket takes the summed activation of its constituent
+        fine-grained labels, then the scores are renormalized so the result
+        behaves like a 7-class probability distribution for fusion.
         """
         id2label = self.model.config.id2label
         coarse_scores = {label: 0.0 for label in EMOTION_LABELS}
@@ -126,13 +151,13 @@ class TextEmotionModel(BaseModelService):
                 fine_label.lower(), "Neutral"
             )
             score = float(fine_probs[int(idx)])
-            if score > coarse_scores[coarse_label]:
-                coarse_scores[coarse_label] = score
+            coarse_scores[coarse_label] += score
 
         if not any(coarse_scores.values()):
             return {label: 0.0 for label in EMOTION_LABELS}
 
-        return coarse_scores
+        total = sum(coarse_scores.values())
+        return {label: value / total for label, value in coarse_scores.items()}
 
     @staticmethod
     def _assert_softmax_outputs(fine_probs: np.ndarray) -> None:
