@@ -68,6 +68,7 @@ class Settings(BaseSettings):
     # Audio emotion model (transcription + acoustic tone)
     audio_whisper_model: str = "openai/whisper-base"
     audio_emotion_model: str = "audeering/wav2vec2-large-robust-12-ft-emotion-msp-dim"
+    audio_emotion_local_model_dir: str = "app/ml/audio_emotion/audio_model"
     audio_sample_rate: int = 16000
     audio_max_length_seconds: float = 30.0
 
@@ -82,7 +83,7 @@ class Settings(BaseSettings):
     fusion_text_weight: float = 0.30
     fusion_audio_weight: float = 0.30
     fusion_facial_weight: float = 0.40
-    fusion_method: str = "weighted_average"
+    fusion_method: str = "cross_attention"
     fusion_mid_late_blend: float = 0.5
 
     # ------------------------------------------------------------------
