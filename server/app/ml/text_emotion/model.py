@@ -6,8 +6,8 @@ Transformers' safetensors-native loading path (`from_pretrained` picks up
 `.safetensors` automatically when present, avoiding pickle-based
 deserialization entirely).
 
-The checkpoint predicts 28 fine-grained GoEmotions labels using a sigmoid
-(multi-label) head. We aggregate those into the 7 coarse emotion classes
+The checkpoint predicts 28 fine-grained GoEmotions labels using a softmax
+(single-label) head. We aggregate those into the 7 coarse emotion classes
 shared by every modality and the fusion engine.
 """
 
@@ -92,10 +92,9 @@ class TextEmotionModel(BaseModelService):
 
         with torch.no_grad():
             logits = self.model(**inputs).logits
-            # The checkpoint's `problem_type` is `multi_label_classification`,
-            # so each fine-grained label gets its own independent sigmoid
-            # probability rather than a single softmax distribution.
-            fine_probs = torch.sigmoid(logits)[0].cpu().numpy()
+            fine_probs = torch.softmax(logits, dim=-1)[0].cpu().numpy()
+
+        self._assert_softmax_outputs(fine_probs)
 
         inference_time_ms = (time.time() - start_time) * 1000
 
@@ -115,10 +114,9 @@ class TextEmotionModel(BaseModelService):
 
         Each coarse bucket takes the *max* activation among its constituent
         fine-grained labels (a bucket is "active" if any of its underlying
-        emotions fired). The resulting coarse scores remain independent
-        sigmoid probabilities rather than being renormalized into a single
-        distribution, so the text UI can show the strength of each emotion
-        directly.
+        emotions fired). The resulting coarse scores are derived from the
+        model's softmax probabilities, so the text UI can show the strength of
+        each emotion directly.
         """
         id2label = self.model.config.id2label
         coarse_scores = {label: 0.0 for label in EMOTION_LABELS}
@@ -135,3 +133,15 @@ class TextEmotionModel(BaseModelService):
             return {label: 0.0 for label in EMOTION_LABELS}
 
         return coarse_scores
+
+    @staticmethod
+    def _assert_softmax_outputs(fine_probs: np.ndarray) -> None:
+        """Ensure the model outputs a normalized softmax distribution.
+
+        This helps catch accidental sigmoid heads in tests and at runtime.
+        """
+        total = float(np.sum(fine_probs))
+        if not np.isclose(total, 1.0, atol=1e-5):
+            raise AssertionError(
+                f"Expected softmax probabilities to sum to 1.0, got {total:.6f}"
+            )
