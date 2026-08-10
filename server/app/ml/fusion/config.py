@@ -15,9 +15,10 @@ class FusionConfig:
     audio_weight: float = 0.30
     facial_weight: float = 0.40
 
-    # "weighted_average" (late fusion only) or "multi_tier" (early + gated
-    # mid-level + late fusion, blended together).
-    fusion_method: str = "weighted_average"
+    # "weighted_average" (late fusion only), "cross_attention" (gated
+    # cross-modal fusion blended with late fusion), or "multi_tier"
+    # (compatibility alias for the cross-attention path).
+    fusion_method: str = "cross_attention"
 
     # When fusion_method == "multi_tier", this controls how much weight the
     # gated mid-level fusion tier gets vs. the late (soft-voting) tier when
