@@ -33,6 +33,7 @@ class ModelRegistry:
             AudioEmotionConfig(
                 whisper_model=settings.audio_whisper_model,
                 emotion_model=settings.audio_emotion_model,
+                emotion_model_path=settings.audio_emotion_local_model_dir,
                 device=settings.device,
                 sample_rate=settings.audio_sample_rate,
                 max_audio_length_seconds=settings.audio_max_length_seconds,
