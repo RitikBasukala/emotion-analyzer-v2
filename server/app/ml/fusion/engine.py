@@ -107,7 +107,7 @@ class GatedFusionLayer(nn.Module):
         """
         projected = torch.stack(
             [
-                torch.sigmoid(proj(vec))
+                torch.softmax(proj(vec), dim=-1)
                 for proj, vec in zip(self.projections, modality_vectors)
             ]
         )  # (num_modalities, num_classes)
@@ -160,15 +160,17 @@ class FusionEngine:
         mid_probs = self._mid_level_fusion(predictions)
         late_probs = self._late_fusion(predictions, weights)
 
-        if self.config.fusion_method == "multi_tier":
+        if self.config.fusion_method in {"cross_attention", "multi_tier"}:
             blend = self.config.mid_late_blend
             final_probs = {
                 label: blend * mid_probs[label] + (1 - blend) * late_probs[label]
                 for label in self.emotions
             }
-        else:
-            # "weighted_average" (default): late fusion / soft-voting ensemble only.
+        elif self.config.fusion_method == "weighted_average":
+            # Late fusion / soft-voting ensemble only.
             final_probs = late_probs
+        else:
+            raise ValueError(f"Unsupported fusion_method: {self.config.fusion_method}")
 
         total = sum(final_probs.values())
         if total > 0:
