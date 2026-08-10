@@ -1,21 +1,23 @@
 """Audio Emotion Model Service.
 
-Combines two independently swappable HuggingFace models:
+Combines a local-first acoustic tone model with Hugging Face fallbacks:
 1. Whisper - speech-to-text transcription, cascaded into the text pipeline.
-2. Wav2Vec2 - acoustic tone/pitch/velocity representation for emotion.
+2. Local Keras tone classifier - loads the checked-in audio checkpoint and
+    scaler from `app/ml/audio_emotion/audio_model`.
+3. Hugging Face Wav2Vec2 fallback - used when the local checkpoint cannot
+    be loaded.
 
-The Wav2Vec2 backbone here ships without a fine-tuned classification head
-(no labeled acoustic-emotion checkpoint was provided for this project), so
-we attach a small fixed-seed linear projection head on top of its pooled
-hidden state to produce a deterministic, reproducible 7-way distribution.
-This is clearly a placeholder pending a properly fine-tuned head — swap
-`_ProjectionHead` for a trained classifier without touching any caller.
+The local audio checkpoint expects 200x120 MFCC-style features. We
+construct those features from the waveform, scale them with the checked-in
+`StandardScaler`, and feed them into the Keras classifier.
 """
 
 import logging
 import time
+from pathlib import Path
 from typing import Any, Dict, Tuple
 
+import joblib
 import numpy as np
 import torch
 import torch.nn as nn
@@ -46,6 +48,15 @@ class _ProjectionHead(nn.Module):
 class AudioEmotionModel(BaseModelService):
     """Audio-based emotion recognition: transcription + acoustic tone analysis."""
 
+    _LOCAL_MODEL_FILE = "audio_bilstm_checkpoint.keras"
+    _LOCAL_FALLBACK_MODEL_FILES = (
+        "audio_branch_classifier.keras",
+        "audio_embedding_extractor.keras",
+    )
+    _LOCAL_SCALER_FILE = "audio_scaler.pkl"
+    _LOCAL_TARGET_FRAMES = 200
+    _LOCAL_MFCC_FEATURES = 40
+
     def __init__(self, config: AudioEmotionConfig):
         super().__init__(
             ModelConfig(
@@ -61,41 +72,90 @@ class AudioEmotionModel(BaseModelService):
         self.emotion_processor = None
         self.emotion_backbone = None
         self.projection_head: _ProjectionHead | None = None
+        self.local_tone_model = None
+        self.local_scaler = None
+        self._tone_backend = "huggingface"
+        self._tone_model_name = config.emotion_model
+
+    def _resolve_local_model_dir(self) -> Path:
+        if not self.config.model_path:
+            raise FileNotFoundError("No local audio model directory configured")
+
+        path = Path(self.config.model_path)
+        if not path.is_absolute():
+            path = Path(__file__).resolve().parents[3] / path
+        return path
+
+    def _load_whisper_model(self) -> None:
+        from transformers import WhisperForConditionalGeneration, WhisperProcessor
+
+        self.whisper_processor = WhisperProcessor.from_pretrained(
+            self.audio_config.whisper_model
+        )
+        whisper_model = WhisperForConditionalGeneration.from_pretrained(
+            self.audio_config.whisper_model
+        )
+        whisper_model.to(self.config.device)  # type: ignore[misc] - torch Module.to() stub artifact
+        whisper_model.eval()
+        self.whisper_model = whisper_model
+
+    def _load_local_tone_model(self, model_dir: Path) -> None:
+        from tensorflow.keras.models import load_model
+
+        scaler_path = model_dir / self._LOCAL_SCALER_FILE
+        if not scaler_path.exists():
+            raise FileNotFoundError(f"Missing local audio scaler: {scaler_path}")
+
+        local_model_path = model_dir / self._LOCAL_MODEL_FILE
+        if not local_model_path.exists():
+            for fallback_name in self._LOCAL_FALLBACK_MODEL_FILES:
+                candidate = model_dir / fallback_name
+                if candidate.exists():
+                    local_model_path = candidate
+                    break
+            else:
+                raise FileNotFoundError(
+                    f"No local audio checkpoint found in {model_dir}"
+                )
+
+        self.local_scaler = joblib.load(scaler_path)
+        self.local_tone_model = load_model(local_model_path, compile=False)
+        self._tone_backend = "local"
+        self._tone_model_name = f"local:{local_model_path.name}"
+
+    def _load_hf_tone_model(self) -> None:
+        from transformers import AutoProcessor, Wav2Vec2Model
+
+        model_name = self.config.model_path or self.config.model_name
+        emotion_backbone = Wav2Vec2Model.from_pretrained(model_name)
+        emotion_backbone.to(self.config.device)  # type: ignore[misc] - torch Module.to() stub artifact
+        emotion_backbone.eval()
+        self.emotion_processor = AutoProcessor.from_pretrained(model_name)
+        self.emotion_backbone = emotion_backbone
+
+        self.projection_head = _ProjectionHead(
+            hidden_size=self.emotion_backbone.config.hidden_size,
+            num_classes=len(EMOTION_LABELS),
+        ).to(self.config.device)
+        self.projection_head.eval()
+        self._tone_backend = "huggingface"
+        self._tone_model_name = self.config.model_name
 
     def load_model(self) -> None:
         try:
-            from transformers import (
-                AutoProcessor,
-                Wav2Vec2Model,
-                WhisperForConditionalGeneration,
-                WhisperProcessor,
-            )
+            self._load_whisper_model()
 
-            self.whisper_processor = WhisperProcessor.from_pretrained(
-                self.audio_config.whisper_model
-            )
-            whisper_model = WhisperForConditionalGeneration.from_pretrained(
-                self.audio_config.whisper_model
-            )
-            whisper_model.to(self.config.device)  # type: ignore[misc] - torch Module.to() stub artifact
-            whisper_model.eval()
-            self.whisper_processor = WhisperProcessor.from_pretrained(
-                self.audio_config.whisper_model
-            )
-            self.whisper_model = whisper_model
+            if self.config.model_path:
+                try:
+                    self._load_local_tone_model(self._resolve_local_model_dir())
+                except Exception as exc:
+                    logger.warning(
+                        "audio_model.local_load_failed",
+                        extra={"path": self.config.model_path, "error": str(exc)},
+                    )
 
-            model_name = self.config.model_path or self.config.model_name
-            emotion_backbone = Wav2Vec2Model.from_pretrained(model_name)
-            emotion_backbone.to(self.config.device)  # type: ignore[misc] - torch Module.to() stub artifact
-            emotion_backbone.eval()
-            self.emotion_processor = AutoProcessor.from_pretrained(model_name)
-            self.emotion_backbone = emotion_backbone
-
-            self.projection_head = _ProjectionHead(
-                hidden_size=self.emotion_backbone.config.hidden_size,
-                num_classes=len(EMOTION_LABELS),
-            ).to(self.config.device)
-            self.projection_head.eval()
+            if self._tone_backend != "local":
+                self._load_hf_tone_model()
 
             self._initialized = True
         except Exception as exc:  # pragma: no cover - defensive, fail loudly
@@ -111,11 +171,52 @@ class AudioEmotionModel(BaseModelService):
         audio, _ = librosa.effects.trim(audio)
         sr = int(sr)
 
+        if len(audio) < sr:
+            audio = librosa.util.fix_length(audio, size=sr)
+
         max_samples = int(self.audio_config.max_audio_length_seconds * sr)
         if len(audio) > max_samples:
             audio = audio[:max_samples]
 
         return audio, sr
+
+    def _local_feature_matrix(self, audio: np.ndarray, sr: int) -> np.ndarray:
+        import librosa
+
+        mfcc = librosa.feature.mfcc(
+            y=audio,
+            sr=sr,
+            n_mfcc=self._LOCAL_MFCC_FEATURES,
+        )
+        mfcc_delta = librosa.feature.delta(mfcc)
+        mfcc_delta2 = librosa.feature.delta(mfcc, order=2)
+
+        features = np.concatenate([mfcc, mfcc_delta, mfcc_delta2], axis=0).T
+        if features.shape[0] < self._LOCAL_TARGET_FRAMES:
+            padding = self._LOCAL_TARGET_FRAMES - features.shape[0]
+            features = np.pad(features, ((0, padding), (0, 0)), mode="constant")
+        else:
+            features = features[: self._LOCAL_TARGET_FRAMES]
+
+        assert self.local_scaler is not None
+        features = self.local_scaler.transform(features)
+        return features.astype(np.float32, copy=False)
+
+    def _predict_local_tone(self, audio: np.ndarray, sr: int) -> Dict[str, float]:
+        assert self.local_tone_model is not None
+
+        local_features = self._local_feature_matrix(audio, sr)
+        batch = np.expand_dims(local_features, axis=0)
+        probabilities = self.local_tone_model.predict(batch, verbose=0)[0]
+        probabilities = np.asarray(probabilities, dtype=np.float32)
+
+        total = float(probabilities.sum())
+        if total <= 0:
+            uniform = 1.0 / len(EMOTION_LABELS)
+            return {label: uniform for label in EMOTION_LABELS}
+
+        probabilities = probabilities / total
+        return {label: float(p) for label, p in zip(EMOTION_LABELS, probabilities)}
 
     def transcribe(self, audio: np.ndarray) -> str:
         """Transcribe audio to text via Whisper, cascaded into the text pipeline."""
@@ -143,6 +244,10 @@ class AudioEmotionModel(BaseModelService):
     def analyze_tone(self, audio: np.ndarray) -> Dict[str, float]:
         """Analyze acoustic tone/pitch/velocity emotion signal from raw audio."""
         self.ensure_loaded()
+
+        if self._tone_backend == "local":
+            return self._predict_local_tone(audio, self.audio_config.sample_rate)
+
         assert self.emotion_processor is not None and self.emotion_backbone is not None
         assert self.projection_head is not None
 
@@ -173,7 +278,7 @@ class AudioEmotionModel(BaseModelService):
             emotion=predicted_emotion,
             confidence=tone_probs[predicted_emotion],
             probabilities=tone_probs,
-            model_name=self.config.model_name,
+            model_name=self._tone_model_name,
             inference_time_ms=inference_time_ms,
         )
 
