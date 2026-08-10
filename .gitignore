@@ -68,3 +68,4 @@ temp/
 
 #Models
 server/app/ml/text_emotion/text_model/model.safetensors
+server/app/ml/audio_emotion/audio_model/
