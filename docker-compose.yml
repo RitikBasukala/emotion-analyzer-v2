@@ -5,7 +5,7 @@ services:
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-emotion_ai}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change_me_in_production}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-161a8ab7bb44539d5801bbcb2352369a}
       POSTGRES_DB: ${POSTGRES_DB:-emotion_recognition}
     ports:
       - "${POSTGRES_PORT:-5432}:5432"
@@ -22,17 +22,17 @@ services:
 
   # Optional lightweight local DB browser. Not required to run the API;
   # comment out this service if you don't need it.
-  adminer:
-    image: adminer:latest
-    container_name: emotion_ai_adminer
-    restart: unless-stopped
-    ports:
-      - "${ADMINER_PORT:-8080}:8080"
-    depends_on:
-      postgres:
-        condition: service_healthy
-    networks:
-      - emotion_ai_network
+  # adminer:
+  #   image: adminer:latest
+  #   container_name: emotion_ai_adminer
+  #   restart: unless-stopped
+  #   ports:
+  #     - "${ADMINER_PORT:-8080}:8080"
+  #   depends_on:
+  #     postgres:
+  #       condition: service_healthy
+  #   networks:
+  #     - emotion_ai_network
 
 volumes:
   postgres_data:
