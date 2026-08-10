@@ -77,20 +77,19 @@ Tables are created automatically on startup (`app.db.session.init_models`)
   safetensors-native `from_pretrained`, then maps its multi-label sigmoid
   outputs down to the 7 shared coarse emotion classes.
 - **Audio**: Whisper for transcription + a Wav2Vec2 acoustic backbone.
-  Whisper/Wav2Vec2 backbones are pulled from the HuggingFace Hub by name
-  (configurable); no fine-tuned acoustic-emotion head was provided for
-  this project, so a fixed-seed deterministic placeholder head sits on
-  top of the pooled hidden state — swap it for a trained classifier
-  without touching any caller.
+  Whisper still comes from Hugging Face, but the acoustic emotion path is
+  local-first: it loads the checked-in Keras checkpoint and scaler from
+  `app/ml/audio_emotion/audio_model/` and falls back to the Hugging Face
+  Wav2Vec2 backbone if the local model cannot be loaded.
 - **Video**: samples frames and runs DeepFace's FER model when the
   optional `deepface` package is installed, with a deterministic
   fallback otherwise; the video's audio track is extracted via `ffmpeg`
   and run through the same audio cascade used by `/audio/analyze`.
 - **Fusion**: `app/ml/fusion/engine.py` implements Early Fusion
   (concatenation), Mid-Level Fusion (a gated cross-modal projection that
-  suppresses noisy modalities), and Late Fusion (soft-voting ensemble),
-  and blends the latter two into the final decision when
-  `FUSION_METHOD=multi_tier`.
+  now uses softmax-normalized modality features), and Late Fusion
+  (soft-voting ensemble). The final decision blends the mid-level and
+  late tiers when `FUSION_METHOD=cross_attention`.
 
 ## Removed in this migration
 

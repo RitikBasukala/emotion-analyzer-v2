@@ -8,7 +8,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, RedirectResponse
 
 from app.api.v1.router import api_v1_router
 from app.core.config import settings
@@ -72,12 +72,7 @@ app.include_router(api_v1_router, prefix=settings.api_v1_prefix)
 
 @app.get("/", tags=["meta"])
 async def root():
-    return {
-        "message": settings.app_name,
-        "version": "2.0.0",
-        "docs": "/docs",
-        "api_prefix": settings.api_v1_prefix,
-    }
+    return RedirectResponse("/docs")
 
 
 @app.get("/health", tags=["meta"])
